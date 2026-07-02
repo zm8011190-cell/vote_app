@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import uuid
 from pathlib import Path
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from schemas import User, choose, Question as QuestionSchema, QuestionWithImage
 
 import models as models
+from rate_limit import lifespan, rate_limiter
 
 models.init_db()
 
@@ -36,12 +38,13 @@ seed_default_questions()
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.post("/register")
-def create_user(user: User, db: Session = Depends(get_db)):
+async def create_user(user: User, db: Session = Depends(get_db), _rate_limited: None = Depends(rate_limiter)):
+      
     existing_user = db.query(models.User).filter(
         (models.User.username == user.username) | (models.User.email == user.email)
     ).first()
@@ -61,7 +64,7 @@ def create_user(user: User, db: Session = Depends(get_db)):
 
 
 @app.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db), _rate_limited: None = Depends(rate_limiter)):
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
